@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mlops
+description: FastAPI ML model service with MLflow integration
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

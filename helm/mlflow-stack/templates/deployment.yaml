@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-mlflow
+  namespace: {{ .Values.global.namespace }}
+spec:
+  replicas: {{ .Values.mlflow.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-mlflow
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-mlflow
+    spec:
+      initContainers:
+        - name: init-data
+          image: busybox:1.36
+          command: ["/bin/sh","-c"]
+          args:
+            - set -eux;
+              mkdir -p /data/mlflow /data/artifacts;
+              chmod -R 777 /data || true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: mlflow
+          image: {{ .Values.mlflow.image }}
+          imagePullPolicy: {{ .Values.mlflow.imagePullPolicy }}
+          ports:
+            - containerPort: 5000
+          env:
+            - name: MLFLOW_GUNICORN_CMD_ARGS
+              value: "{{ .Values.mlflow.gunicornCmdArgs }}"
+{{- range $k, $v := .Values.mlflow.env }}
+            - name: {{ $k }}
+              value: "{{ $v }}"
+{{- end }}
+{{- if .Values.mlflow.installPipPackages }}
+          command: ["/bin/sh","-c"]
+          args:
+            - >-
+              pip install --no-cache-dir {{ join " " .Values.mlflow.installPipPackages }}
+              && exec mlflow server
+              --host=0.0.0.0
+              --port=5000
+              --backend-store-uri={{ .Values.mlflow.backendStoreUri }}
+              --default-artifact-root={{ .Values.mlflow.defaultArtifactRoot }}
+{{- else }}
+          args:
+            - mlflow
+            - server
+            - --host=0.0.0.0
+            - --port=5000
+            - --backend-store-uri={{ .Values.mlflow.backendStoreUri }}
+            - --default-artifact-root={{ .Values.mlflow.defaultArtifactRoot }}
+{{- end }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          resources:
+{{- toYaml .Values.mlflow.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+{{- if .Values.mlflow.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-mlflow-data
+{{- else }}
+          emptyDir: {}
+{{- end }}

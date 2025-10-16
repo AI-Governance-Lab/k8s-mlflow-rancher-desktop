@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-mlflow
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: {{ .Values.mlflow.service.type }}
+  externalTrafficPolicy: Cluster
+  selector:
+    app: {{ .Release.Name }}-mlflow
+  ports:
+    - name: http
+      port: {{ .Values.mlflow.service.port }}
+      targetPort: 5000
+      {{- if eq .Values.mlflow.service.type "NodePort" }}
+      nodePort: {{ .Values.mlflow.service.nodePort }}
+      {{- end }}

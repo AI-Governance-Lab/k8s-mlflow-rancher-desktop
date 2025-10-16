@@ -1,0 +1,51 @@
+# Global knobs
+global:
+  namespace: mlflow
+
+# PostgreSQL (Bitnami)
+postgresql:
+  enabled: false
+
+# MinIO (Bitnami)
+minio:
+  enabled: false
+
+# MLflow server
+mlflow:
+  image: ghcr.io/mlflow/mlflow:v3.4.0
+  imagePullPolicy: Always
+  replicas: 1
+  gunicornCmdArgs: "--workers 1 --timeout 300"
+  backendStoreUri: "sqlite:////data/mlflow/mlflow.db"
+  defaultArtifactRoot: "file:///data/artifacts"
+  installPipPackages: null
+  env: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  service:
+    type: NodePort
+    port: 5000
+    nodePort: 30010
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: local-path
+
+# Ingress is TOP-LEVEL (templates/ingress.yaml reads .Values.ingress.*)
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+  hosts:
+    - host: mlflow.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []  # add TLS here later if needed

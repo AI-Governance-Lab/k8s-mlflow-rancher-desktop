@@ -1,0 +1,29 @@
+image:
+  repository: crevesky/scikit-ml01-k8s
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8000
+  # To expose externally with NodePort, set:
+  # type: NodePort
+  # nodePort: 30010
+
+envSecretName: mlops-env   # Secret created from .env
+envConfigMapName: ""       # Optional: provide a ConfigMap name if you have non-sensitive envs
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
