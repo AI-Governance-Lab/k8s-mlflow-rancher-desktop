@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: localstack-cors
+data:
+  cors.json: |
+    {
+      "CORSRules": [
+        {
+          "AllowedOrigins": ["*"],
+          "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
+          "AllowedHeaders": ["*"],
+          "ExposeHeaders": ["ETag"]
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack
+spec:
+  selector:
+    app: localstack
+  ports:
+    - protocol: TCP
+      port: 4566
+      targetPort: 4566
+      nodePort: 31566
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localstack
+  template:
+    metadata:
+      labels:
+        app: localstack
+    spec:
+      containers:
+        - name: localstack
+          image: localstack/localstack:3.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4566
+          env:
+            - name: SERVICES
+              value: "s3"
+            - name: DEBUG
+              value: "1"
+            - name: LOCALSTACK_VOLUME_DIR
+              value: "/tmp/localstack-data"
+          volumeMounts:
+            - name: localstack-vol
+              mountPath: /tmp/localstack-data
+            - name: cors-config
+              mountPath: /tmp/cors.json
+              subPath: cors.json
+      volumes:
+        - name: localstack-vol
+          emptyDir: {}
+        - name: cors-config
+          configMap:
+            name: localstack-cors
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: localstack-init
+spec:
+  template:
+    spec:
+      containers:
+        - name: init
+          image: amazon/aws-cli
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              aws configure set aws_access_key_id test && \
+              aws configure set aws_secret_access_key test && \
+              aws configure set region us-east-1 && \
+              aws --endpoint-url=http://localstack:4566 s3 mb s3://mlflow-artifacts && \
+              aws --endpoint-url=http://localstack:4566 s3api put-bucket-cors \
+                --bucket mlflow-artifacts \
+                --cors-configuration file:///tmp/cors.json
+          volumeMounts:
+            - name: cors-config
+              mountPath: /tmp/cors.json
+              subPath: cors.json
+      restartPolicy: OnFailure
+      volumes:
+        - name: cors-config
+          configMap:
+            name: localstack-cors
