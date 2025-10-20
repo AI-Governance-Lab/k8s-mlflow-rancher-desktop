@@ -56,6 +56,10 @@ spec:
               value: "1"
             - name: LOCALSTACK_VOLUME_DIR
               value: "/tmp/localstack-data"
+            - name: AWS_ACCESS_KEY_ID
+              value: "test"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "test"
           volumeMounts:
             - name: localstack-vol
               mountPath: /tmp/localstack-data
@@ -65,36 +69,6 @@ spec:
       volumes:
         - name: localstack-vol
           emptyDir: {}
-        - name: cors-config
-          configMap:
-            name: localstack-cors
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: localstack-init
-spec:
-  template:
-    spec:
-      containers:
-        - name: init
-          image: amazon/aws-cli
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              aws configure set aws_access_key_id test && \
-              aws configure set aws_secret_access_key test && \
-              aws configure set region us-east-1 && \
-              aws --endpoint-url=http://localstack:4566 s3 mb s3://mlflow-artifacts && \
-              aws --endpoint-url=http://localstack:4566 s3api put-bucket-cors \
-                --bucket mlflow-artifacts \
-                --cors-configuration file:///tmp/cors.json
-          volumeMounts:
-            - name: cors-config
-              mountPath: /tmp/cors.json
-              subPath: cors.json
-      restartPolicy: OnFailure
-      volumes:
         - name: cors-config
           configMap:
             name: localstack-cors

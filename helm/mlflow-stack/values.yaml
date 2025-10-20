@@ -17,9 +17,16 @@ mlflow:
   replicas: 1
   gunicornCmdArgs: "--workers 1 --timeout 300"
   backendStoreUri: "sqlite:////data/mlflow/mlflow.db"
-  defaultArtifactRoot: "file:///data/artifacts"
+  # Use LocalStack S3 bucket as the artifact root
+  defaultArtifactRoot: "s3://mlflow-artifacts"
   installPipPackages: null
-  env: {}
+  env:
+    MLFLOW_S3_ENDPOINT_URL: "http://localstack.localstack.svc.cluster.local:4566"
+    AWS_ACCESS_KEY_ID: "test"
+    AWS_SECRET_ACCESS_KEY: "test"
+    AWS_DEFAULT_REGION: "us-east-1"
+    AWS_S3_FORCE_PATH_STYLE: "true"
+    AWS_S3_ADDRESSING_STYLE: "path"
   resources:
     requests:
       cpu: 50m
