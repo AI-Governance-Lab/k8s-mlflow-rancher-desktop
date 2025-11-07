@@ -1,6 +1,94 @@
-# MLflow 3.4 on K8s Rancher Desktop with Helm (LLMOps-ready)
+# MLflow 3.4 on K8s Rancher Desktop with Helm (LLMOps-ready, local dev stack)
 
-Deploy MLflow 3.4 tracking on k3s with PostgreSQL + MinIO, including LLMOps basics and examples.
+Run a complete MLflow stack on your laptop (Rancher Desktop/k3s) for testing and learning. One command to install, easy to reset, local‑only by default.
+
+Version note
+- Default chart pins MLflow server to a stable 3.3.x image. You can switch to 3.4 in “Choose an MLflow version”.
+
+## Who is this for
+- Developers and students learning MLflow/LLMOps on a laptop
+- Rapid POCs and workshops (no cloud required)
+- Safe sandbox for tracking experiments, LLM prompts, artifacts
+
+## What you get (locally)
+- MLflow Tracking UI via NodePort (http://localhost:30500)
+- PostgreSQL backend store (Bitnami) + MinIO artifacts (S3‑compatible)
+- Small footprint defaults for k3s (Rancher Desktop)
+
+## What this is NOT
+- Production deployment (no TLS, no HA, demo creds)
+- Multi‑tenant or hardened for external exposure (keep it local)
+
+## 5‑minute quick start (Windows, PowerShell)
+Prereqs: Rancher Desktop (k3s enabled), kubectl, Helm 3.
+
+```powershell
+# 1) Create namespace
+kubectl create namespace mlflow
+
+# 2) Pull dependencies and install
+helm repo add bitnami https://charts.bitnami.com/bitnami
+cd helm\mlflow-stack
+helm dependency build
+helm install mlflow . -n mlflow --create-namespace
+
+# 3) Open the UI (NodePort)
+# In browser: http://localhost:30500
+kubectl -n mlflow get svc mlflow-mlflow
+```
+
+Verify:
+```powershell
+kubectl -n mlflow get pods
+kubectl -n mlflow rollout status deploy/mlflow-mlflow
+kubectl -n mlflow exec deploy/mlflow-mlflow -- python -c "import mlflow; print(mlflow.__version__)"
+```
+
+Quick log from your laptop:
+```powershell
+# PowerShell
+$env:MLFLOW_TRACKING_URI="http://localhost:30500"
+python - <<'PY'
+import mlflow
+with mlflow.start_run(run_name="hello-local-dev"):
+    mlflow.log_param("stage", "dev")
+    mlflow.log_metric("accuracy", 0.91)
+print("Logged. Check the UI at http://localhost:30500")
+PY
+```
+
+## Local‑only by default
+- Access via localhost NodePort 30500 (no public exposure)
+- Demo credentials live in values.yaml (PostgreSQL, MinIO)
+- StorageClass: nfs‑client (recommended) or local‑path
+
+To use port‑forward instead of NodePort:
+```powershell
+kubectl -n mlflow port-forward svc/mlflow-mlflow 5000:5000
+# http://localhost:5000
+```
+
+## Reset / Cleanup
+```powershell
+helm uninstall mlflow -n mlflow
+kubectl delete ns mlflow
+```
+
+Reinstall (fresh):
+```powershell
+kubectl create ns mlflow
+cd helm\mlflow-stack
+helm dependency build
+helm install mlflow . -n mlflow
+```
+
+## Learn by doing (suggested exercises)
+- Track a simple sklearn run and register a model
+- Log LLM prompts/outputs, latency, and token stats as metrics/artifacts
+- Store artifacts in MinIO and browse them via port‑forward to the console
+- Try the sample agent that auto‑logs to this MLflow instance
+
+---
 
 ## What is MLflow (for managers)
 MLflow is a system of record for AI work—covering traditional machine learning and modern generative AI (LLMs, chatbots, AI agents). It helps teams:
@@ -36,7 +124,7 @@ Use MLflow to manage classic ML and LLM apps (chatbots, RAG, content generation)
 
 Mapping to this deployment:
 - Tracking data in PostgreSQL; files/models/reports in MinIO
-- MLflow UI at http://<any-node-ip>:30500
+- MLflow UI at http://<any-node-ip>:30500 (use localhost on Rancher Desktop)
 - Create experiments (e.g., “llm‑pocs”), then log runs from scripts or notebooks
 
 ## Summary
@@ -240,7 +328,7 @@ flowchart LR
 
 ## Repository layout
 ```
-k8s-mlfow-demo/
+k8s-mlflow-rancher-desktop/
 ├─ README.md
 ├─ LICENSE
 ├─ docs/
@@ -276,10 +364,6 @@ k8s-mlfow-demo/
     kubectl -n mlflow get pod -l app=mlflow-mlflow -o wide
     # Example test (replace <node-ip>):
     curl -I http://<node-ip>:30500/
-    ```
-  - Check NodePort iptables rule on the node:
-    ```sh
-    sudo iptables -S | grep 30500 || true
     ```
   - Fallback (local access):
     ```sh
@@ -318,15 +402,6 @@ k8s-mlfow-demo/
     kubectl -n mlflow rollout restart deploy/mlflow-mlflow
     kubectl -n mlflow rollout status deploy/mlflow-mlflow
     ```
-  - Pin by digest if tags are cached:
-    ```sh
-    docker pull ghcr.io/mlflow/mlflow:v3.3.2
-    docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/mlflow/mlflow:v3.3.2
-    # Use digest output below
-    helm upgrade mlflow helm/mlflow-stack -n mlflow \
-      --set mlflow.image="ghcr.io/mlflow/mlflow@sha256:<DIGEST>" \
-      --set mlflow.imagePullPolicy=Always
-    ```
 
 - Backend store (PostgreSQL) connectivity test (from MLflow pod):
   ```sh
@@ -357,14 +432,6 @@ try:
 except s3.exceptions.BucketAlreadyOwnedByYou:
     print("Bucket exists:", bucket)
 PY
-  ```
-
-- In-cluster HTTP test (Service reachability):
-  ```sh
-  kubectl -n mlflow run nettest --rm -it --image=curlimages/curl --restart=Never -- \
-    sh -lc 'set -e; \
-      curl -sS http://mlflow-mlflow.mlflow.svc.cluster.local:5000/ >/dev/null && echo "HTTP OK"; \
-      curl -sS http://mlflow-mlflow.mlflow.svc.cluster.local:5000/api/2.0/mlflow/experiments/list >/dev/null && echo "API OK"'
   ```
 
 ### AI agent sample (watsonx-ai-agent01) — integrated with MLflow
@@ -405,11 +472,10 @@ Notes
 See the agent README for full steps:
 [llmops/ai_agents/watsonx-ai-agent01-k8s/README.md](llmops/ai_agents/watsonx-ai-agent01-k8s/README.md)
 
-
 ## Rancher Desktop (WSL2): access options
 
 - NodePort on localhost
-  - Access: http://127.0.0.1:<nodePort> (e.g., 30010 or 30500, per values.yaml)
+  - Access: http://127.0.0.1:<nodePort> (e.g., 30500, per values.yaml)
   - Find the current NodePort:
     ```sh
     kubectl -n mlflow get svc mlflow-mlflow -o jsonpath='{.spec.ports[0].nodePort}{"\n"}'
@@ -438,16 +504,6 @@ See the agent README for full steps:
      ```
   4) Access: http://mlflow.local
 
-- LoadBalancer mapped to localhost
-  - Switch the Service:
-    ```yaml
-    mlflow:
-      service:
-        type: LoadBalancer
-        port: 5000
-    ```
-  - Access: http://127.0.0.1:5000
-
 - Expose to your LAN (Windows)
   - Port-forward on all interfaces (temporary):
     ```sh
@@ -458,16 +514,6 @@ See the agent README for full steps:
     New-NetFirewallRule -DisplayName "MLflow 5000" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5000
     ```
     Access from LAN: http://<WINDOWS_IP>:5000
-  - Portproxy for NodePort (persistent, e.g., 30010):
-    ```powershell
-    netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=30010 connectaddress=127.0.0.1 connectport=30010
-    New-NetFirewallRule -DisplayName "MLflow 30010" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 30010
-    ```
-    Remove:
-    ```powershell
-    netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=30010
-    Remove-NetFirewallRule -DisplayName "MLflow 30010"
-    ```
 
 - Quick debug
   ```sh
@@ -475,9 +521,8 @@ See the agent README for full steps:
   kubectl -n mlflow get endpoints mlflow-mlflow -o wide
   kubectl -n mlflow logs deploy/mlflow-mlflow | tail -n 50
   ```
-- Note: On Rancher Desktop, Node EXTERNAL-IP is <none>. Do not use the WSL internal IP (192.168.127.x) from Windows; use localhost (127.0.0.1) or the methods above
 
 ---
 
 📌 Notes  
-This repository is maintained as part of my personal learning and PoC development for AI Governance.
+This repository is maintained for personal learning and PoC development for AI Governance.
